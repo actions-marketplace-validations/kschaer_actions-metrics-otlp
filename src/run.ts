@@ -1,6 +1,8 @@
 import * as core from '@actions/core'
 import * as github from '@actions/github'
 import { PullRequestEvent, PushEvent, WorkflowRunEvent } from '@octokit/webhooks-types'
+import { MeterProvider } from '@opentelemetry/sdk-metrics'
+
 import { computePullRequestClosedMetrics, computePullRequestOpenedMetrics } from './pullRequest/metrics'
 import { computePushMetrics } from './push/metrics'
 import { queryCompletedCheckSuite } from './queries/completedCheckSuite'
@@ -11,18 +13,11 @@ import { computeWorkflowRunJobStepMetrics } from './workflowRun/metrics'
 import { computeScheduleMetrics } from './schedule/metrics'
 import { SubmitMetrics } from './client'
 import { setupOtel } from './otel'
-import { MeterProvider } from '@opentelemetry/sdk-metrics'
-import { Meter } from '@opentelemetry/api'
 
 export const run = async (context: GitHubContext, inputs: ActionInputs): Promise<void> => {
-  // const submitMetrics = createMetricsClient(inputs)
-
   const meterProvider = setupOtel(inputs)
 
-  core.info('Handling event')
   await handleEvent(meterProvider, context, inputs)
-  // const rateLimit = await getRateLimitMetrics(context, inputs)
-  // await submitMetrics(rateLimit, 'rate limit')
 
   core.info('Shutting down telemetry')
   await meterProvider.forceFlush()
@@ -31,18 +26,10 @@ export const run = async (context: GitHubContext, inputs: ActionInputs): Promise
 
 const handleEvent = async (meterProvider: MeterProvider, context: GitHubContext, inputs: ActionInputs) => {
   if (context.eventName === 'workflow_run') {
-    return await handleWorkflowRun(meterProvider, context.payload as WorkflowRunEvent, inputs)
+    return handleWorkflowRun(meterProvider, context.payload as WorkflowRunEvent, inputs)
   }
-  // if (context.eventName === 'pull_request') {
-  //   return await handlePullRequest(submitMetrics, context.payload as PullRequestEvent, context, inputs)
-  // }
-  // if (context.eventName === 'push') {
-  //   return handlePush(submitMetrics, context.payload as PushEvent)
-  // }
-  // if (context.eventName === 'schedule') {
-  //   return handleSchedule(submitMetrics, context, inputs)
-  // }
-  core.warning(`Not supported event ${context.eventName}`)
+
+  core.warning(`Event not supported: ${context.eventName}`)
 }
 
 const handleWorkflowRun = async (meterProvider: MeterProvider, e: WorkflowRunEvent, inputs: ActionInputs) => {
@@ -66,15 +53,8 @@ const handleWorkflowRun = async (meterProvider: MeterProvider, e: WorkflowRunEve
     }
 
     const meter = meterProvider.getMeter('workflow-run')
-    computeWorkflowRunJobStepMetrics(e, meter, checkSuite)
+    computeWorkflowRunJobStepMetrics(e, meter, inputs, checkSuite)
 
-    // await submitMetrics(metrics.workflowRunMetrics, 'workflow run')
-    // if (inputs.collectJobMetrics) {
-    //   await submitMetrics(metrics.jobMetrics, 'job')
-    // }
-    // if (inputs.collectStepMetrics) {
-    //   await submitMetrics(metrics.stepMetrics, 'step')
-    // }
     return
   }
 
@@ -105,7 +85,10 @@ const handlePullRequest = async (
     } catch (error) {
       core.warning(`Could not get the pull request: ${String(error)}`)
     }
-    return await submitMetrics(computePullRequestClosedMetrics(e, closedPullRequest, inputs), 'pull request')
+    return await submitMetrics(
+      computePullRequestClosedMetrics(e, closedPullRequest, { sendPullRequestLabels: true }),
+      'pull request'
+    )
   }
 
   core.warning(`Not supported action ${e.action}`)

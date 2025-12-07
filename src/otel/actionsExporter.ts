@@ -1,5 +1,4 @@
 import * as core from '@actions/core'
-import util from 'util'
 import { ExportResult, ExportResultCode } from '@opentelemetry/core'
 import {
   AggregationTemporality,
@@ -10,7 +9,7 @@ import {
 } from '@opentelemetry/sdk-metrics'
 import { DEFAULT_AGGREGATION_TEMPORALITY_SELECTOR } from '@opentelemetry/sdk-metrics/build/src/export/AggregationSelector'
 
-interface ConsoleMetricExporterOptions {
+interface ActionsMetricExporterOptions {
   temporalitySelector?: AggregationTemporalitySelector
 }
 
@@ -19,13 +18,11 @@ export class ActionsConsoleMetricExporter implements PushMetricExporter {
   protected _shutdown = false
   protected _temporalitySelector: AggregationTemporalitySelector
 
-  constructor(options?: ConsoleMetricExporterOptions) {
+  constructor(options?: ActionsMetricExporterOptions) {
     this._temporalitySelector = options?.temporalitySelector ?? DEFAULT_AGGREGATION_TEMPORALITY_SELECTOR
   }
 
   export(metrics: ResourceMetrics, resultCallback: (result: ExportResult) => void): void {
-    console.log('ActionsConsoleMetricExporter.export')
-
     if (this._shutdown) {
       // If the exporter is shutting down, by spec, we need to return FAILED as export result
       setImmediate(resultCallback, { code: ExportResultCode.FAILED })
@@ -53,13 +50,7 @@ export class ActionsConsoleMetricExporter implements PushMetricExporter {
 
     for (const scopeMetrics of metrics.scopeMetrics) {
       for (const metric of scopeMetrics.metrics) {
-        core.info(
-          util.inspect({
-            descriptor: metric.descriptor,
-            dataPointType: metric.dataPointType,
-            dataPoints: metric.dataPoints,
-          })
-        )
+        core.info(JSON.stringify(metric, null, 2))
       }
     }
 
